@@ -15,11 +15,22 @@ CHENNAI_PREMIUM_SILVER = 5.25
 cache = {}
 last_fetch = 0
 
+# ✅ SAFE FETCH
 def fetch_data(ticker):
-    data = yf.download(ticker, period="3m", interval="1d", progress=False, auto_adjust=True)
-    return data["Close"]
+    try:
+        data = yf.download(ticker, period="3mo", interval="1d", progress=False, auto_adjust=True)
+        if data is None or data.empty:
+            return None
+        return data["Close"]
+    except Exception as e:
+        print(f"Error fetching {ticker}:", e)
+        return None
 
+# ✅ SAFE RSI
 def get_rsi(prices, period=14):
+    if prices is None or len(prices) < period:
+        return 50  # fallback neutral
+
     delta = prices.diff().dropna()
     gain = delta.where(delta > 0, 0)
     loss = -delta.where(delta < 0, 0)
@@ -30,11 +41,15 @@ def get_rsi(prices, period=14):
     rs = avg_gain / avg_loss
     return (100 - (100 / (1 + rs))).iloc[-1]
 
+# ✅ SAFE ANALYSIS
 def analyze(prices):
+    if prices is None or len(prices) < 50:
+        return 0, 0, 0, 0, 0, 0
+
     returns = prices.pct_change()
 
-    sma50 = prices.rolling(50).mean().iloc[-1]
-    sma200 = prices.rolling(200).mean().iloc[-1]
+    sma50 = prices.rolling(50).mean().iloc[-1] if len(prices) >= 50 else 0
+    sma200 = prices.rolling(200).mean().iloc[-1] if len(prices) >= 200 else 0
 
     spikes = returns[returns > 0.05].count()
     drops = returns[returns < -0.05].count()
@@ -52,7 +67,20 @@ def local_price(usd, fx, metal):
     premium = CHENNAI_PREMIUM_GOLD if metal == "GOLD" else CHENNAI_PREMIUM_SILVER
     return base + premium
 
+# ✅ SAFE STRATEGY
 def strategy(prices, fx, metal):
+    if prices is None or prices.empty:
+        return {
+            "price": 0,
+            "ath": 0,
+            "drawdown": 0,
+            "spikes": 0,
+            "drops": 0,
+            "rsi": 50,
+            "signal": "⚠️ NO DATA",
+            "advice": "Data unavailable"
+        }
+
     sma50, sma200, spikes, drops, ath, drawdown = analyze(prices)
     rsi = get_rsi(prices)
 
@@ -82,22 +110,33 @@ def strategy(prices, fx, metal):
         "advice": advice
     }
 
+# ✅ MAIN DATA FUNCTION (SAFE)
 def get_data():
     global cache, last_fetch
 
     if time.time() - last_fetch > 60:
-        fx = fetch_data("USDINR=X")
-        fx_rate = float(fx.iloc[-1])
+        try:
+            fx = fetch_data("USDINR=X")
 
-        gold_prices = fetch_data("GC=F")
-        silver_prices = fetch_data("SI=F")
+            if fx is None or fx.empty:
+                print("FX failed, using fallback")
+                fx_rate = 83.0
+            else:
+                fx_rate = float(fx.iloc[-1])
 
-        cache = {
-            "gold": strategy(gold_prices, fx_rate, "GOLD"),
-            "silver": strategy(silver_prices, fx_rate, "SILVER")
-        }
+            gold_prices = fetch_data("GC=F")
+            silver_prices = fetch_data("SI=F")
 
-        last_fetch = time.time()
+            cache = {
+                "gold": strategy(gold_prices, fx_rate, "GOLD"),
+                "silver": strategy(silver_prices, fx_rate, "SILVER")
+            }
+
+            last_fetch = time.time()
+
+        except Exception as e:
+            print("ERROR:", e)
+            return {"error": str(e)}
 
     return cache
 
@@ -114,5 +153,6 @@ def price():
 def health():
     return "OK"
 
+# ✅ REQUIRED FOR RENDER
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
