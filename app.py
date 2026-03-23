@@ -16,7 +16,7 @@ cache = {}
 last_fetch = 0
 
 def fetch_data(ticker):
-    data = yf.download(ticker, period="3y", interval="1d", progress=False, auto_adjust=True)
+    data = yf.download(ticker, period="3m", interval="1d", progress=False, auto_adjust=True)
     return data["Close"]
 
 def get_rsi(prices, period=14):
@@ -107,6 +107,7 @@ def home():
 
 @app.route("/price")
 def price():
+    print("API HIT 🔥")
     return jsonify(get_data())
 
 @app.route("/health")
