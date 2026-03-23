@@ -2,6 +2,7 @@ from flask import Flask, jsonify
 import yfinance as yf
 import pandas as pd
 import time
+import os
 
 app = Flask(__name__)
 
